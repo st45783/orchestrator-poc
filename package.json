@@ -16,7 +16,8 @@
     "db:check-query": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env scripts/check-query.mjs",
     "chat:check": "node scripts/check-chat.mjs",
     "eval": "node scripts/run-eval.mjs",
-    "db:set-agent-password": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env scripts/set-agent-password.mjs"
+    "db:set-agent-password": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env scripts/set-agent-password.mjs",
+    "db:comments:generate": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/generate-comments.mjs"
   },
   "dependencies": {
     "next": "16.4.3",

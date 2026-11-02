@@ -88,6 +88,7 @@ scripts/                  DB 적용·확인, 채점 스크립트
    ```bash
    npm run db:migrate -- supabase/migrations/0001_domain_schemas.sql
    npm run db:migrate -- supabase/migrations/0002_agent_logins.sql
+   npm run db:migrate -- supabase/migrations/0003_comments.sql
    npm run db:set-agent-password
    npm run db:migrate -- supabase/seed/seed.sql
    ```
