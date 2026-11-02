@@ -94,5 +94,5 @@
 
 - [ ] 허용 OpenAI 모델 목록과 기본 모델 (8번에서 그 시점 OpenAI 제공 모델 중 선택)
 - [x] DB 접속: 변수는 `SUPABASE_DB_URL`, 비밀번호는 사용자가 제공해 `.env`의 `SUPABASE_DB_PASSWORD`에 저장 (2026-11-02)
-- [ ] 추가 패키지 4개(`openai`, `postgres`, `zod`, `server-only`) 설치 승인 (DESIGN 5.2)
+- [x] 추가 패키지 4개(`openai`, `postgres`, `zod`, `server-only`) 설치 승인 (2026-11-02, DESIGN 5.2)
 - [ ] 20번 Vercel 환경변수를 CLI로 등록해도 되는지 (PRD는 "설정 화면에 직접 등록")

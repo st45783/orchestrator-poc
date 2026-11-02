@@ -188,5 +188,5 @@ PRD §9의 15개 개발 단위를 **순서대로** 진행한다. 각 단위는 �
 - [ ] 허용 OpenAI 모델 목록과 기본값 모델 (단위 5에서 결정)
 - [x] DB 접속 변수: `SUPABASE_DB_URL` (연결 풀러 주소). 비밀번호는 `.env`의 `SUPABASE_DB_PASSWORD` (DESIGN 7절)
 - [x] SQL 실행 방식: `postgres` 라이브러리로 직접 실행, 읽기 전용 트랜잭션·업무별 DB 역할로 차단 (DESIGN 4.3절)
-- [ ] 추가 패키지 4개(`openai`, `postgres`, `zod`, `server-only`) 설치 승인
+- [x] 추가 패키지 4개(`openai`, `postgres`, `zod`, `server-only`) 설치 승인 (2026-11-02). 이 밖의 새 패키지는 여전히 설치 전에 확인받는다
 - [ ] 위 폴더 구조 확정
