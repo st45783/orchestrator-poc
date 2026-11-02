@@ -12,6 +12,9 @@ const CASES = [
   { q: "개발 이슈 전체 목록 보여줘", expect: { outcome: "answered", called: ["dev:db"], answerIncludes: "총 150건 중 100건만 보여줍니다" } },
   { q: "점심 메뉴 추천해줘", expect: { outcome: "clarify", called: [] } },
   { q: "2025년 12월 매출 알려줘", expect: { outcome: "out_of_range", called: [], answerIncludes: "2026-01~2026-10 데이터만 있습니다" } },
+  // CHECK.md #7 — AI가 놓쳐도 서버가 기간 밖으로 처리
+  { q: "작년 매출 알려줘", expect: { outcome: "out_of_range", called: [], answerIncludes: "2026-01~2026-10 데이터만 있습니다" } },
+  { q: "11월 개발팀 인건비 알려줘", expect: { outcome: "out_of_range", called: [], answerIncludes: "2026-01~2026-10 데이터만 있습니다" } },
   { q: "개발팀 인원 알려줘", model: "gpt-9-ultra", expect: { status: 400 } },
   // 작업 22 — 문맥 이어 묻기
   {

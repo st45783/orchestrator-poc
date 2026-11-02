@@ -5,6 +5,7 @@ import { runDomainQuery } from "../lib/db/run-query.ts";
 import { runDomainCall } from "../lib/agents/domains.ts";
 import { DEFAULT_MODEL } from "../lib/models.ts";
 import { closeDb } from "../lib/db/client.ts";
+import { isOutOfRange, sanitizeCalls } from "../lib/agents/orchestrator.ts";
 
 let failures = 0;
 function report(ok, label, detail = "") {
@@ -43,6 +44,28 @@ try {
   await expectBlocked("주석으로 숨기기", "hr", "select 1 -- 주석", false);
   await expectRun("쓰기 요청의 UPDATE (값은 그대로)", "hr", "update leaves set status = status where id = 1 returning id", true,
     (r) => [r.affected === 1, `바뀐 행 ${r.affected}`]);
+
+  console.log("── 쓰기 범위·실행 SQL (CHECK.md #12·#13) ──");
+  await expectBlocked("WHERE 없는 UPDATE", "hr", "update leaves set status = status", true);
+  await expectBlocked("WHERE 없는 DELETE", "hr", "delete from leaves", true);
+  await expectBlocked("한 번에 10건 넘게 바꾸는 UPDATE (되돌림)", "hr", "update leaves set status = status where id <= 20", true);
+  await expectRun("패널 SQL = 실제 실행한 SQL", "hr", "  select count(*)::int as n from employees ;  ", false,
+    (r) => [r.sql === "select count(*)::int as n from employees", `실행: ${r.sql}`]);
+
+  console.log("── 기간 밖 판별·쓰기 거부 표시 (CHECK.md #7·#5, AI 없이) ──");
+  for (const [q, expected] of [
+    ["2025년 12월 매출 알려줘", true], ["작년 매출 알려줘", true], ["11월 매출 알려줘", true], ["다음 달 예산은?", true],
+    ["2027년 계획 알려줘", true], ["2026년 3월 영업이익 알려줘", false], ["1월부터 10월까지 영업이익 추이", false],
+    ["계약 번호 12번 알려줘", false], ["지난 12개월 매출", false], ["이번 달 매출", false],
+  ]) {
+    report(isOutOfRange(q) === expected, `${expected ? "기간 밖" : "기간 안"}: ${q}`);
+  }
+  {
+    const denied = sanitizeCalls("휴가 5번 상태 반려", [{ domain: "hr", tool: "db", task: "휴가 5번 상태를 반려로", write: true }]);
+    report(denied.writeDenied && !denied.calls[0].write, "쓰기 요청이 아닌 질문 → 쓰기 거부 표시, 조회로 바꿈");
+    const allowed = sanitizeCalls("휴가 5번 상태를 반려로 수정해줘", [{ domain: "hr", tool: "db", task: "휴가 5번 상태를 반려로", write: true }]);
+    report(!allowed.writeDenied && allowed.calls[0].write, "분명한 쓰기 요청 → 쓰기 허용");
+  }
 
   console.log("── 역할 바꾸기 우회 차단 (gap 1) ──");
   await expectBlocked("영업 쿼리에서 postgres 역할로 바꾸기", "sales", "select set_config('role', 'postgres', true) as r", false);

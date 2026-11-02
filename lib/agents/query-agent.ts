@@ -74,7 +74,8 @@ export async function runQueryAgent(params: {
     });
     try {
       const result = await runDomainQuery(domain, sql, write, signal);
-      return { sql: sql.trim().replace(/;\s*$/, ""), tables: tablesUsed(domain, sql), result };
+      // 패널에는 DB가 실제로 실행한 문장을 그대로 보여준다
+      return { sql: result.sql, tables: tablesUsed(domain, result.sql), result };
     } catch (error) {
       // 요청이 중단됐으면 다시 시도하지 않는다 (마감 초과·다른 업무 실패)
       if (error instanceof QueryAbortedError || signal?.aborted) throw error;

@@ -39,6 +39,25 @@ export function isWriteRequest(question: string): boolean {
   return WRITE_REQUEST.test(question);
 }
 
+/**
+ * 서버가 직접 잡는 데이터 기간 밖 표현 (PRD must ① 규칙 6, CHECK.md #7).
+ * AI가 놓쳐도 이 표현이 있으면 DB를 부르지 않고 기간 안내를 한다. 데이터는 2026-01 ~ 2026-10 뿐이다.
+ */
+const OUT_OF_RANGE_PATTERNS = [
+  /(?<!\d)(?!2026)(?:19|20)\d{2}\s*년/, // 2026년이 아닌 연도
+  /(작년|지난해|재작년|내년|다음\s*해)/,
+  /(?<!\d)1[12]\s*월/, // 11월·12월
+  /다음\s*달/, // 이번 달이 2026년 10월이므로 다음 달은 11월
+];
+
+export function isOutOfRange(question: string): boolean {
+  return OUT_OF_RANGE_PATTERNS.some((pattern) => pattern.test(question));
+}
+
+/** 쓰기가 거부됐을 때 답 뒤에 붙이는 안내 (CHECK.md #5) */
+export const WRITE_DENIED_NOTICE =
+  '요청하신 데이터 변경(등록·수정·삭제)은 하지 않았습니다. 바꾸려면 "○○을 ○○로 수정해줘"처럼 분명히 요청해 주세요.';
+
 const routingSchema = z.object({
   action: z.enum(["route", "clarify", "out_of_range"]),
   reason: z.string().describe("판단 이유 한 문장, 50자 이내"),
@@ -139,6 +158,14 @@ function shortenReason(reason: string): string {
   return text.length <= REASON_MAX ? text : `${text.slice(0, REASON_MAX - 1)}…`;
 }
 
+/** 판단 이유가 비어 왔을 때 쓰는 문장 (CHECK.md #18). 패널에 빈 이유가 나가지 않게 한다 */
+function fallbackReason(outcome: DecisionPanel["outcome"], results: DomainCallResult[]): string {
+  if (outcome === "out_of_range") return "데이터 기간(2026-01~10) 밖이라 호출하지 않음";
+  if (outcome === "clarify") return "질문이 어느 업무인지 알 수 없어 되물음";
+  const labels = [...new Set(results.map((r) => DOMAIN_LABELS[r.call.domain]))];
+  return `${labels.join("·")} 정보가 필요해 호출함`;
+}
+
 /** 실행 기록으로 5개 업무 패널을 만든다. 호출 기록이 없는 업무는 "해당 없음". */
 function buildPanel(outcome: DecisionPanel["outcome"], reason: string, results: DomainCallResult[]): DecisionPanel {
   const domains: PanelDomain[] = DOMAINS.map((domain) => {
@@ -147,22 +174,31 @@ function buildPanel(outcome: DecisionPanel["outcome"], reason: string, results: 
       ? { domain, label: DOMAIN_LABELS[domain], status: "called", tools }
       : { domain, label: DOMAIN_LABELS[domain], status: "skipped" };
   });
-  return { outcome, reason: shortenReason(reason), domains };
+  return { outcome, reason: shortenReason(reason.trim() || fallbackReason(outcome, results)), domains };
 }
 
-/** AI가 고른 호출 목록을 서버 규칙으로 정리한다. */
-function sanitizeCalls(question: string, calls: z.infer<typeof routingSchema>["calls"]): DomainCall[] {
+/**
+ * AI가 고른 호출 목록을 서버 규칙으로 정리한다.
+ * writeDenied: AI는 쓰기라고 했지만 질문이 쓰기 요청이 아니어서 조회로 바꾼 경우 (CHECK.md #5)
+ */
+export function sanitizeCalls(
+  question: string,
+  calls: z.infer<typeof routingSchema>["calls"],
+): { calls: DomainCall[]; writeDenied: boolean } {
   const allowWrite = isWriteRequest(question);
   const seen = new Set<string>();
   const result: DomainCall[] = [];
+  let writeDenied = false;
   for (const c of calls) {
     const key = `${c.domain}:${c.tool}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    // 쓰기는 합성 DB이고, 질문에 등록·수정·삭제 표현이 있을 때만 허용한다 (must ② 규칙 4)
-    result.push({ domain: c.domain as Domain, tool: c.tool, task: c.task, write: c.tool === "db" && c.write && allowWrite });
+    const wantsWrite = c.tool === "db" && c.write;
+    if (wantsWrite && !allowWrite) writeDenied = true;
+    // 쓰기는 합성 DB이고, 질문이 쓰기를 분명히 요청할 때만 허용한다 (must ② 규칙 4)
+    result.push({ domain: c.domain as Domain, tool: c.tool, task: c.task, write: wantsWrite && allowWrite });
   }
-  return result;
+  return { calls: result, writeDenied };
 }
 
 export async function orchestrate(
@@ -173,6 +209,11 @@ export async function orchestrate(
 ): Promise<ChatSuccessResponse> {
   // 직전 대화가 있으면 이어 묻는 질문을 완전한 질문으로 바꾼다 (작업 22)
   const fullQuestion = previous ? await resolveFollowUp(question, previous, model, signal) : question;
+
+  // 데이터 기간 밖 표현이 있으면 AI 판단과 상관없이 호출하지 않는다 (CHECK.md #7)
+  if (isOutOfRange(fullQuestion)) {
+    return { answer: OUT_OF_RANGE_MESSAGE, panel: buildPanel("out_of_range", "", []) };
+  }
 
   // ① 질문 분석
   const routing = await askStructured({
@@ -188,10 +229,12 @@ export async function orchestrate(
     return { answer: OUT_OF_RANGE_MESSAGE, panel: buildPanel("out_of_range", routing.reason, []) };
   }
   // 쓰기 허용 검사는 직원이 이번에 실제로 쓴 문장으로 한다
-  const calls = routing.action === "route" ? sanitizeCalls(question, routing.calls) : [];
+  const { calls, writeDenied } =
+    routing.action === "route" ? sanitizeCalls(question, routing.calls) : { calls: [], writeDenied: false };
   if (calls.length === 0) {
     const message = routing.clarify_message.trim() || DEFAULT_CLARIFY_MESSAGE;
-    const reason = routing.reason.trim() || "질문이 어느 업무인지 알 수 없어 되물음";
+    // AI가 호출하려다 호출할 업무가 없어진 경우, 호출 이유를 그대로 쓰지 않는다 (CHECK.md #18)
+    const reason = routing.action === "route" ? "호출할 업무를 정할 수 없어 되물음" : routing.reason;
     return { answer: message, panel: buildPanel("clarify", reason, []) };
   }
 
@@ -208,15 +251,19 @@ export async function orchestrate(
       model,
       name: "final_answer",
       system: COMPOSE_PROMPT,
-      user: `질문: ${fullQuestion}\n\n업무별 결과(JSON):\n${JSON.stringify(data, null, 2)}`,
+      user:
+        `질문: ${fullQuestion}\n\n업무별 결과(JSON):\n${JSON.stringify(data, null, 2)}` +
+        (writeDenied ? "\n\n주의: 데이터 변경(등록·수정·삭제)은 하지 않고 조회만 했다. 바꿨다고 말하지 않는다." : ""),
       schema: composeSchema,
       signal,
     });
     answer = composed.answer.trim();
+    // 빈 답은 내보내지 않는다. 정해진 오류 문구로 바꾼다 (CHECK.md #18)
+    if (!answer) throw new Error("답 합치기 결과가 비어 있습니다");
   }
 
   // 정해진 문구는 서버가 원문 그대로 붙인다
-  const notices = results.flatMap((r) => r.notices).filter(Boolean);
+  const notices = [...results.flatMap((r) => r.notices), ...(writeDenied ? [WRITE_DENIED_NOTICE] : [])].filter(Boolean);
   answer = [answer, ...notices].filter(Boolean).join("\n\n");
 
   return { answer, panel: buildPanel("answered", routing.reason, results) };
