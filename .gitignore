@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# bkit 플러그인 로컬 상태
+/.bkit/
+
+# 삭제 대기 파일 (사용자가 확인 후 직접 삭제, CLAUDE.md 규칙)
+/trash-can/
