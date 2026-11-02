@@ -15,6 +15,8 @@ const CASES = [
   // CHECK.md #7 — AI가 놓쳐도 서버가 기간 밖으로 처리
   { q: "작년 매출 알려줘", expect: { outcome: "out_of_range", called: [], answerIncludes: "2026-01~2026-10 데이터만 있습니다" } },
   { q: "11월 개발팀 인건비 알려줘", expect: { outcome: "out_of_range", called: [], answerIncludes: "2026-01~2026-10 데이터만 있습니다" } },
+  // CHECK.md #8 — 같은 업무에 할 일이 두 개여도 둘 다 답한다 (개발팀 17명, 승인된 휴가 76건)
+  { q: "개발팀 인원과 승인된 휴가 건수 알려줘", expect: { outcome: "answered", called: ["hr:db"], answerIncludes: "76" } },
   { q: "개발팀 인원 알려줘", model: "gpt-9-ultra", expect: { status: 400 } },
   // 작업 22 — 문맥 이어 묻기
   {
@@ -48,7 +50,7 @@ for (const c of CASES) {
   } else {
     const called = body.panel.domains
       .filter((d) => d.status === "called")
-      .flatMap((d) => d.tools.map((t) => `${d.domain}:${t.tool}`))
+      .flatMap((d) => [...new Set(d.tools.map((t) => `${d.domain}:${t.tool}`))])
       .sort();
     if (body.panel.domains.length !== 5) problems.push("패널 업무가 5개가 아님");
     if (body.panel.outcome !== c.expect.outcome) problems.push(`응답 종류 ${body.panel.outcome} (기대 ${c.expect.outcome})`);

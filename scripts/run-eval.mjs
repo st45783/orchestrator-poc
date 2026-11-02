@@ -47,7 +47,7 @@ function calledOf(body) {
   if (!body?.panel) return [];
   return body.panel.domains
     .filter((d) => d.status === "called")
-    .flatMap((d) => d.tools.map((t) => `${d.domain}:${t.tool}`))
+    .flatMap((d) => [...new Set(d.tools.map((t) => `${d.domain}:${t.tool}`))])
     .sort();
 }
 

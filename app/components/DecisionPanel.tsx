@@ -5,7 +5,8 @@ import { TOOL_LABELS, type DecisionPanel as Panel, type PanelDomain } from "@/li
 
 function domainTag(d: PanelDomain): string {
   if (d.status === "skipped" || !d.tools?.length) return `[${d.label}]`;
-  return `[${d.label} · ${d.tools.map((t) => TOOL_LABELS[t.tool]).join(" + ")}]`;
+  // 같은 도구를 여러 번 썼어도(할 일 여러 개) 도구 이름은 한 번만 보여준다
+  return `[${d.label} · ${[...new Set(d.tools.map((t) => TOOL_LABELS[t.tool]))].join(" + ")}]`;
 }
 
 export default function DecisionPanel({ panel }: { panel: Panel }) {

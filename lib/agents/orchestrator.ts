@@ -20,6 +20,8 @@ import { MOCK_APIS } from "../mock-api.ts";
 import { askStructured } from "../openai.ts";
 import { runDomainCall, type DomainCallResult } from "./domains.ts";
 
+/** 한 업무의 합성 DB에 한 번에 맡기는 할 일 최대 개수. 비용·시간이 끝없이 늘지 않게 한다 */
+const MAX_DB_TASKS_PER_DOMAIN = 3;
 /** 판단 이유 최대 길이 (PRD must ① 규칙 7) */
 const REASON_MAX = 50;
 /** 기본 되묻기 문장 (PRD must ① 규칙 3 예시) */
@@ -190,8 +192,13 @@ export function sanitizeCalls(
   const result: DomainCall[] = [];
   let writeDenied = false;
   for (const c of calls) {
-    const key = `${c.domain}:${c.tool}`;
+    // 합성 DB는 할 일이 다르면 따로 실행한다 (예: 인사 DB의 인원·휴가). 같은 할 일만 합친다 (CHECK.md #8)
+    // 가짜 API는 업무마다 작업이 하나뿐이라 한 번만 부른다
+    const key = c.tool === "db" ? `${c.domain}:db:${c.task.trim()}` : `${c.domain}:${c.tool}`;
     if (seen.has(key)) continue;
+    if (c.tool === "db" && result.filter((r) => r.domain === c.domain && r.tool === "db").length >= MAX_DB_TASKS_PER_DOMAIN) {
+      continue;
+    }
     seen.add(key);
     const wantsWrite = c.tool === "db" && c.write;
     if (wantsWrite && !allowWrite) writeDenied = true;

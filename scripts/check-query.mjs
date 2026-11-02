@@ -67,6 +67,23 @@ try {
     report(!allowed.writeDenied && allowed.calls[0].write, "분명한 쓰기 요청 → 쓰기 허용");
   }
 
+  console.log("── 같은 업무의 할 일 여러 개 (CHECK.md #8, AI 없이) ──");
+  {
+    const q = "개발팀 인원과 승인된 휴가 건수 알려줘";
+    const hrDb = (task) => ({ domain: "hr", tool: "db", task, write: false });
+    const two = sanitizeCalls(q, [hrDb("개발팀 인원 수"), hrDb("승인된 휴가 건수")]).calls;
+    report(two.length === 2, "인사 DB 할 일 2개(인원·휴가) → 둘 다 실행", `${two.length}건`);
+    const same = sanitizeCalls(q, [hrDb("개발팀 인원 수"), hrDb("개발팀 인원 수 ")]).calls;
+    report(same.length === 1, "같은 할 일 2번 → 1번만 실행", `${same.length}건`);
+    const mock = sanitizeCalls("휴가 신청해줘", [
+      { domain: "hr", tool: "mock_api", task: "휴가 신청", write: false },
+      { domain: "hr", tool: "mock_api", task: "연차 신청", write: false },
+    ]).calls;
+    report(mock.length === 1, "같은 업무 가짜 API 2번 → 1번만 호출", `${mock.length}건`);
+    const many = sanitizeCalls(q, [hrDb("a"), hrDb("b"), hrDb("c"), hrDb("d")]).calls;
+    report(many.length === 3, "한 업무 DB 할 일은 최대 3개", `${many.length}건`);
+  }
+
   console.log("── 역할 바꾸기 우회 차단 (gap 1) ──");
   await expectBlocked("영업 쿼리에서 postgres 역할로 바꾸기", "sales", "select set_config('role', 'postgres', true) as r", false);
   await expectBlocked("영업 쿼리에서 재무 역할로 바꾸기", "sales", "select set_config('role', 'agent_finance', true) as r", false);
