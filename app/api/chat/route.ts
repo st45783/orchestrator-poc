@@ -55,6 +55,9 @@ export async function POST(request: Request): Promise<Response> {
     ]);
     return Response.json(result satisfies ChatResponse);
   } catch (error) {
+    // 마감 초과나 한 업무의 실패로 끝나면, 아직 돌고 있는 다른 업무의 OpenAI 호출·SQL도 멈춘다
+    // (중단된 쓰기 트랜잭션은 커밋되지 않고 되돌려진다 — lib/db/run-query.ts)
+    controller.abort(error);
     logServerError("api/chat", error);
     return errorResponse(FIXED_ERROR_MESSAGE, 500);
   } finally {

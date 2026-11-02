@@ -27,8 +27,17 @@ export const DEFAULT_CLARIFY_MESSAGE =
   "업무 정보를 조회하는 서비스입니다. 인사·재무·영업·보안·개발 중 어떤 내용을 찾으시나요?";
 /** 데이터 기간 밖 안내 (PRD must ① 규칙 6) */
 export const OUT_OF_RANGE_MESSAGE = "2026-01~2026-10 데이터만 있습니다";
-/** 쓰기(등록·수정·삭제)를 허용하는 질문 표현 (DESIGN §4.1 쓰기 허용 검사) */
-const WRITE_WORDS = /(등록|추가|넣어|수정|변경|바꿔|바꾸|고쳐|삭제|지워|제거|취소)/;
+/**
+ * 쓰기(등록·수정·삭제)를 분명히 요청하는 표현 (DESIGN §4.1 쓰기 허용 검사, PRD must ② 규칙 4).
+ * 단어가 들어 있는 것만으로는 안 된다. "수정해줘·변경하고·삭제해 주세요"처럼 요청하는 꼴이어야 한다.
+ * 그래서 "추가로 알려줘", "삭제된 건 몇 개야?", "변경 이력 보여줘" 같은 조회 질문은 쓰기가 아니다.
+ */
+const WRITE_REQUEST =
+  /(등록|추가|입력|수정|변경|삭제|제거|취소)\s*(해|하여|하고|해서|시켜|부탁)|(지워|바꿔|고쳐|넣어|없애)\s*(줘|주|라|요)/;
+
+export function isWriteRequest(question: string): boolean {
+  return WRITE_REQUEST.test(question);
+}
 
 const routingSchema = z.object({
   action: z.enum(["route", "clarify", "out_of_range"]),
@@ -143,7 +152,7 @@ function buildPanel(outcome: DecisionPanel["outcome"], reason: string, results: 
 
 /** AI가 고른 호출 목록을 서버 규칙으로 정리한다. */
 function sanitizeCalls(question: string, calls: z.infer<typeof routingSchema>["calls"]): DomainCall[] {
-  const allowWrite = WRITE_WORDS.test(question);
+  const allowWrite = isWriteRequest(question);
   const seen = new Set<string>();
   const result: DomainCall[] = [];
   for (const c of calls) {

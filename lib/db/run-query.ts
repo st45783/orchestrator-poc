@@ -2,7 +2,7 @@
 // Design Ref: §4.3 — 규칙을 프롬프트에만 맡기지 않고 코드와 DB 권한으로 강제한다 (CLAUDE.md §6).
 import "server-only";
 import type { Domain } from "../types.ts";
-import { getDb } from "./client.ts";
+import { getDomainDb } from "./client.ts";
 
 export const MAX_ROWS = 100;
 const STATEMENT_TIMEOUT_MS = 5_000;
@@ -47,27 +47,53 @@ export function checkSql(raw: string, write: boolean): string {
   return text;
 }
 
+/** 요청이 마감·실패로 중단됐을 때 */
+export class QueryAbortedError extends Error {}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new QueryAbortedError("요청이 중단되어 SQL을 실행하지 않습니다.");
+}
+
 /**
  * 업무 하나의 SQL을 실행한다.
- * - 트랜잭션마다 업무 역할(agent_{업무})과 검색 경로를 설정한다. 연결 풀러는 트랜잭션이 끝나면 설정을 잊는다.
+ * - 업무 역할(agent_{업무})로 직접 로그인한 연결을 쓴다. 다른 업무 테이블은 권한이 없어 DB가 거부하고,
+ *   쿼리 안에서 역할을 바꿀 수도 없다.
  * - 조회는 읽기 전용 트랜잭션: 쓰기 SQL이 들어와도 DB가 거부한다.
- * - 다른 업무 테이블은 역할 권한이 없어 DB가 거부한다.
+ * - 요청이 중단(signal)되면 실행 중인 SQL을 취소하고, 커밋 직전에도 다시 확인해 되돌린다 (DESIGN §2 50초 마감).
  */
-export async function runDomainQuery(domain: Domain, raw: string, write: boolean): Promise<QueryResult> {
+export async function runDomainQuery(domain: Domain, raw: string, write: boolean, signal?: AbortSignal): Promise<QueryResult> {
   const text = checkSql(raw, write);
-  const sql = getDb();
+  throwIfAborted(signal);
+  const sql = getDomainDb(domain);
   return sql.begin(write ? "read write" : "read only", async (tx) => {
-    // domain은 5개 업무 코드 중 하나로 검사된 값이다
-    await tx.unsafe(`set local role agent_${domain}`);
-    await tx.unsafe(`set local search_path to ${domain}`);
-    await tx.unsafe(`set local statement_timeout = ${STATEMENT_TIMEOUT_MS}`);
+    // 실행 중인 쿼리를 중단 신호에 맞춰 취소한다
+    const run = async (query: string) => {
+      throwIfAborted(signal);
+      const pending = tx.unsafe(query);
+      const cancel = () => pending.cancel();
+      signal?.addEventListener("abort", cancel, { once: true });
+      try {
+        return await pending;
+      } finally {
+        signal?.removeEventListener("abort", cancel);
+      }
+    };
 
+    // domain은 5개 업무 코드 중 하나로 검사된 값이다. 로그인 역할의 기본값과 같지만 트랜잭션마다 다시 건다
+    await run(`set local search_path to ${domain}`);
+    await run(`set local statement_timeout = ${STATEMENT_TIMEOUT_MS}`);
+
+    let result: QueryResult;
     if (write) {
-      const result = await tx.unsafe(text);
-      return { rows: [...result], affected: result.count };
+      const rows = await run(text);
+      result = { rows: [...rows], affected: rows.count };
+    } else {
+      const [{ total }] = await run(`select count(*)::int as total from (${text}) as q`);
+      const rows = await run(`select * from (${text}) as q limit ${MAX_ROWS}`);
+      result = { rows: [...rows], total, truncated: total > MAX_ROWS };
     }
-    const [{ total }] = await tx.unsafe(`select count(*)::int as total from (${text}) as q`);
-    const rows = await tx.unsafe(`select * from (${text}) as q limit ${MAX_ROWS}`);
-    return { rows: [...rows], total, truncated: total > MAX_ROWS };
+    // 커밋 직전에 중단됐는지 다시 본다. 중단됐으면 예외로 트랜잭션을 되돌린다
+    throwIfAborted(signal);
+    return result;
   });
 }

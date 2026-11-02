@@ -4,7 +4,7 @@ import "server-only";
 import { z } from "zod";
 import type { Domain } from "../types.ts";
 import { SCHEMA_DOCS } from "../db/schema-docs.ts";
-import { runDomainQuery, type QueryResult } from "../db/run-query.ts";
+import { QueryAbortedError, runDomainQuery, type QueryResult } from "../db/run-query.ts";
 import { askStructured } from "../openai.ts";
 
 const MAX_RETRIES = 2;
@@ -73,9 +73,11 @@ export async function runQueryAgent(params: {
       signal,
     });
     try {
-      const result = await runDomainQuery(domain, sql, write);
+      const result = await runDomainQuery(domain, sql, write, signal);
       return { sql: sql.trim().replace(/;\s*$/, ""), tables: tablesUsed(domain, sql), result };
     } catch (error) {
+      // 요청이 중단됐으면 다시 시도하지 않는다 (마감 초과·다른 업무 실패)
+      if (error instanceof QueryAbortedError || signal?.aborted) throw error;
       const message = error instanceof Error ? error.message : String(error);
       failures.push(`- SQL: ${sql}\n  오류: ${message}`);
       console.error(`[query-agent] ${domain} 시도 ${attempt + 1} 실패: ${message}`);

@@ -1,6 +1,6 @@
 // PLAN 작업 9~11 확인 — 쿼리 안전장치가 막을 것을 막는지, 쿼리 에이전트·서브 에이전트가 답을 가져오는지 본다.
 // 실행: npm run db:check-query   (뒷부분은 OpenAI를 몇 번 부르므로 요금이 조금 든다)
-// 쓰기 시험은 값을 바꾸지 않는 UPDATE(status = status)만 쓴다.
+// 쓰기 시험은 값을 바꾸지 않는 UPDATE(status = status)와, 중단되어 되돌려지는 UPDATE만 쓴다.
 import { runDomainQuery } from "../lib/db/run-query.ts";
 import { runDomainCall } from "../lib/agents/domains.ts";
 import { DEFAULT_MODEL } from "../lib/models.ts";
@@ -43,6 +43,38 @@ try {
   await expectBlocked("주석으로 숨기기", "hr", "select 1 -- 주석", false);
   await expectRun("쓰기 요청의 UPDATE (값은 그대로)", "hr", "update leaves set status = status where id = 1 returning id", true,
     (r) => [r.affected === 1, `바뀐 행 ${r.affected}`]);
+
+  console.log("── 역할 바꾸기 우회 차단 (gap 1) ──");
+  await expectBlocked("영업 쿼리에서 postgres 역할로 바꾸기", "sales", "select set_config('role', 'postgres', true) as r", false);
+  await expectBlocked("영업 쿼리에서 재무 역할로 바꾸기", "sales", "select set_config('role', 'agent_finance', true) as r", false);
+  await expectBlocked("역할 바꾸기 + query_to_xml 로 재무 테이블 읽기", "sales",
+    "select set_config('role', 'postgres', true) as r, query_to_xml('select count(*) as n from finance.monthly_pnl', false, false, '') as x", false);
+
+  console.log("── 중단 시 실행·커밋 안 함 (gap 2·3) ──");
+  {
+    const aborted = AbortSignal.abort();
+    try {
+      await runDomainQuery("hr", "select count(*) from employees", false, aborted);
+      report(false, "이미 중단된 요청", "예상과 달리 실행됨");
+    } catch (error) {
+      report(true, "이미 중단된 요청은 SQL을 실행하지 않음", error.message);
+    }
+
+    // 1.5초 걸리는 쓰기를 0.5초 만에 중단 → 취소되고 되돌려져 값이 그대로여야 한다
+    const before = (await runDomainQuery("hr", "select status from leaves where id = 1", false)).rows[0];
+    const next = before.status === "반려" ? "승인" : "반려";
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(new Error("시험 중단")), 500);
+    let committed = true;
+    try {
+      await runDomainQuery("hr", `update leaves set status = '${next}' where id = 1 and pg_sleep(1.5)::text = '' returning id`, true, controller.signal);
+    } catch {
+      committed = false;
+    }
+    const after = (await runDomainQuery("hr", "select status from leaves where id = 1", false)).rows[0];
+    report(!committed && after.status === before.status, "실행 중 중단된 쓰기는 되돌려짐",
+      `중단 전 ${before.status} → 중단 후 ${after.status}${committed ? " (커밋됨!)" : ""}`);
+  }
 
   console.log(`── 쿼리 에이전트·서브 에이전트 (${DEFAULT_MODEL}) ──`);
   const cases = [
