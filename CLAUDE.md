@@ -74,24 +74,21 @@ npm run build    # 타입 검사 + 빌드
   - 환경변수: `01-app/02-guides/environment-variables.md`
   - 서버 전용 코드 보호: `01-app/02-guides/data-security.md`
 
-## 3. 폴더 구조 (제안 — 개발하면서 확정)
+## 3. 폴더 구조
+
+상세 구성과 각 파일의 역할은 [DESIGN.md](DESIGN.md) 6절을 따른다. 요약:
 
 ```
 app/
-  page.tsx                  # 채팅 화면 (질문 입력·답변·판단 과정 패널·모델 선택)
+  page.tsx, components/     # 채팅 화면, 입력·말풍선·판단 과정 패널
   api/chat/route.ts         # 오케스트레이터 진입점 (POST)
 lib/
-  agents/
-    orchestrator.ts         # 질문 분석 → 업무·도구 판단 → 호출 → 답변 합치기
-    query-agent.ts          # 쿼리 전용 에이전트 (DB 설명서 → SQL → 실행·분석)
-    domains/                # 업무 서브 에이전트 5개: hr, finance, sales, security, dev
-  mock-api/                 # 가짜 API 5개 (정해진 "(가상)" 문구만 반환)
-  db/
-    supabase.ts             # 서버 전용 Supabase 클라이언트 (import 'server-only')
-    schema-docs/            # 업무별 DB 설명서 (테이블·컬럼 설명)
-  openai.ts                 # 서버 전용 OpenAI 클라이언트
-  models.ts                 # 허용 모델 목록 + 기본값 모델
-supabase/                   # 테이블 생성 SQL, 합성데이터 시드
+  types.ts, models.ts       # 공통 타입, 허용 모델 목록
+  openai.ts, errors.ts      # 서버 전용 OpenAI 클라이언트, 정해진 오류 문구
+  db/                       # client.ts(Postgres 연결), run-query.ts(SQL 안전장치), schema-docs/(DB 설명서)
+  agents/                   # orchestrator.ts, query-agent.ts, domains.ts(서브 에이전트 5개)
+  mock-api.ts               # 가짜 API 5개
+supabase/                   # 테이블·역할 생성 SQL, 합성데이터 생성 스크립트
 eval/                       # 테스트 질문 60개 + 정답표
 ```
 
@@ -189,6 +186,7 @@ PRD §9의 15개 개발 단위를 **순서대로** 진행한다. 각 단위는 �
 ## 11. 아직 정하지 않은 것 (개발 중 결정 필요)
 
 - [ ] 허용 OpenAI 모델 목록과 기본값 모델 (단위 5에서 결정)
-- [ ] Supabase 프로젝트 URL과 서버용 키의 환경변수 이름 — 현재 `.env`에는 `SUPABASE_ACCESS_TOKEN`(관리용 토큰)만 있으므로, 단위 1에서 앱이 쓸 변수(예: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`)를 정한다
-- [ ] 쿼리 전용 에이전트가 SQL을 실행하는 방식 (Supabase RPC 함수 등) 과 쓰기 SQL 차단 방법
+- [x] DB 접속 변수: `SUPABASE_DB_URL` (연결 풀러 주소). 비밀번호는 `.env`의 `SUPABASE_DB_PASSWORD` (DESIGN 7절)
+- [x] SQL 실행 방식: `postgres` 라이브러리로 직접 실행, 읽기 전용 트랜잭션·업무별 DB 역할로 차단 (DESIGN 4.3절)
+- [ ] 추가 패키지 4개(`openai`, `postgres`, `zod`, `server-only`) 설치 승인
 - [ ] 위 폴더 구조 확정
