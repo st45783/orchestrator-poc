@@ -96,10 +96,18 @@ export type DecisionPanel = {
 
 // ── 서버 API /api/chat (DESIGN §2.1) ─────────────────────────
 
+/** 직전 대화 한 번 (PLAN 작업 22 — 문맥 이어 묻기) */
+export type ChatTurn = {
+  question: string;
+  answer: string;
+};
+
 export type ChatRequest = {
   question: string;
   /** 허용 목록에 있는 모델 이름 */
   model: string;
+  /** 직전 질문·답. "그럼 영업팀은?"처럼 앞 질문을 이어 물을 때 쓴다 */
+  previous?: ChatTurn;
 };
 
 export type ChatSuccessResponse = {

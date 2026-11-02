@@ -1,6 +1,6 @@
 // PLAN 작업 14 — 채팅 서버 API. 질문·모델을 검사하고 오케스트레이터를 50초 마감 안에서 실행한다.
 // Design Ref: §2.1 서버 API 형식, §2 요청 전체 마감 50초
-import type { ChatErrorResponse, ChatResponse } from "@/lib/types.ts";
+import type { ChatErrorResponse, ChatResponse, ChatTurn } from "@/lib/types.ts";
 import { DEFAULT_MODEL, isAllowedModel } from "@/lib/models.ts";
 import { orchestrate } from "@/lib/agents/orchestrator.ts";
 import { FIXED_ERROR_MESSAGE, logServerError } from "@/lib/errors.ts";
@@ -11,6 +11,16 @@ export const maxDuration = 60;
 /** 요청 하나의 마감. 서버 함수 제한보다 먼저 끝나게 한다 */
 const DEADLINE_MS = 50_000;
 const QUESTION_MAX = 500;
+/** 직전 답은 길 수 있으므로 앞부분만 문맥으로 쓴다 */
+const PREVIOUS_ANSWER_MAX = 1_000;
+
+/** 직전 대화(작업 22)는 모양이 맞을 때만 쓰고, 아니면 없는 것으로 본다 */
+function readPrevious(value: unknown): ChatTurn | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const { question, answer } = value as { question?: unknown; answer?: unknown };
+  if (typeof question !== "string" || typeof answer !== "string" || !question.trim()) return undefined;
+  return { question: question.slice(0, QUESTION_MAX), answer: answer.slice(0, PREVIOUS_ANSWER_MAX) };
+}
 
 function errorResponse(message: string, status: number): Response {
   return Response.json({ error: message } satisfies ChatErrorResponse, { status });
@@ -23,7 +33,7 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     return errorResponse("질문을 확인해 주세요.", 400);
   }
-  const { question, model } = (body ?? {}) as { question?: unknown; model?: unknown };
+  const { question, model, previous } = (body ?? {}) as { question?: unknown; model?: unknown; previous?: unknown };
 
   if (typeof question !== "string" || !question.trim() || question.length > QUESTION_MAX) {
     return errorResponse("질문을 확인해 주세요.", 400);
@@ -38,7 +48,7 @@ export async function POST(request: Request): Promise<Response> {
   const timer = setTimeout(() => controller.abort(new Error("요청 마감 50초 초과")), DEADLINE_MS);
   try {
     const result = await Promise.race([
-      orchestrate(question.trim(), chosenModel, controller.signal),
+      orchestrate(question.trim(), chosenModel, controller.signal, readPrevious(previous)),
       new Promise<never>((_, reject) => {
         controller.signal.addEventListener("abort", () => reject(controller.signal.reason), { once: true });
       }),

@@ -1,4 +1,5 @@
 // PLAN 작업 16 — 판단 과정 패널. 5개 업무를 항상 모두 보여주고, 상태는 "호출됨 / 해당 없음"만 쓴다.
+// PLAN 작업 23 — 호출된 업무를 누르면 조회한 테이블·실행한 SQL·가짜 API 응답을 펼쳐 본다.
 // Design Ref: §1 ⑤ — 패널 내용은 서버의 실제 호출 기록 그대로다 (PRD must ① 규칙 8, must ② 규칙 5).
 import { TOOL_LABELS, type DecisionPanel as Panel, type PanelDomain } from "@/lib/types.ts";
 
@@ -23,22 +24,47 @@ export default function DecisionPanel({ panel }: { panel: Panel }) {
         <div className="shrink-0 font-mono text-xs text-zinc-500 sm:pt-1.5 dark:text-zinc-400">질문 ─▶ 오케스트레이터 ─▶</div>
         <ul className="flex-1 space-y-1.5">
           {panel.domains.map((d) => {
-            const called = d.status === "called";
             const mockApi = d.tools?.some((t) => t.tool === "mock_api");
+            if (d.status !== "called") {
+              return (
+                <li key={d.domain} className="flex items-center justify-between gap-3 px-3 py-1.5 text-zinc-400 dark:text-zinc-500">
+                  <span className="font-medium">{domainTag(d)}</span>
+                  <span className="text-xs">⬜ 해당 없음</span>
+                </li>
+              );
+            }
             return (
-              <li
-                key={d.domain}
-                className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 rounded-lg px-3 py-1.5 ${
-                  called
-                    ? "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100"
-                    : "text-zinc-400 dark:text-zinc-500"
-                }`}
-              >
-                <span className="font-medium">
-                  {domainTag(d)}
-                  {mockApi && <span className="ml-1 font-normal">호출 → 결과 수신(가상)</span>}
-                </span>
-                <span className="text-xs">{called ? "✅ 호출됨" : "⬜ 해당 없음"}</span>
+              <li key={d.domain}>
+                <details className="group rounded-lg bg-emerald-50 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100">
+                  <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-x-3 gap-y-0.5 px-3 py-1.5">
+                    <span className="font-medium">
+                      <span className="mr-1 inline-block transition-transform group-open:rotate-90" aria-hidden>▸</span>
+                      {domainTag(d)}
+                      {mockApi && <span className="ml-1 font-normal">호출 → 결과 수신(가상)</span>}
+                    </span>
+                    <span className="text-xs">✅ 호출됨</span>
+                  </summary>
+                  <div className="space-y-2 px-3 pt-1 pb-3 text-xs">
+                    {d.tools?.map((t, i) =>
+                      t.tool === "db" ? (
+                        <div key={i}>
+                          <p>
+                            <span className="font-semibold">조회한 테이블:</span> {t.tables?.length ? t.tables.join(", ") : "—"}
+                          </p>
+                          {t.sql?.map((s, j) => (
+                            <code key={j} className="mt-1 block whitespace-pre-wrap break-all rounded-md bg-white px-2 py-1.5 font-mono text-zinc-800 ring-1 ring-emerald-200 dark:bg-zinc-950 dark:text-zinc-200 dark:ring-emerald-900">
+                              {s}
+                            </code>
+                          ))}
+                        </div>
+                      ) : (
+                        <p key={i}>
+                          <span className="font-semibold">가짜 API 응답:</span> {t.message}
+                        </p>
+                      ),
+                    )}
+                  </div>
+                </details>
               </li>
             );
           })}

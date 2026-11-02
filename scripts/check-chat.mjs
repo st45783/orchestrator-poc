@@ -13,6 +13,17 @@ const CASES = [
   { q: "점심 메뉴 추천해줘", expect: { outcome: "clarify", called: [] } },
   { q: "2025년 12월 매출 알려줘", expect: { outcome: "out_of_range", called: [], answerIncludes: "2026-01~2026-10 데이터만 있습니다" } },
   { q: "개발팀 인원 알려줘", model: "gpt-9-ultra", expect: { status: 400 } },
+  // 작업 22 — 문맥 이어 묻기
+  {
+    q: "그럼 영업팀은?",
+    previous: { question: "개발팀 인원 알려줘", answer: "개발팀 인원은 17명입니다." },
+    expect: { outcome: "answered", called: ["hr:db"], answerIncludes: "12" },
+  },
+  {
+    q: "휴가 신청해줘",
+    previous: { question: "개발팀 인원 알려줘", answer: "개발팀 인원은 17명입니다." },
+    expect: { outcome: "answered", called: ["hr:mock_api"] },
+  },
 ];
 
 let failures = 0;
@@ -21,7 +32,7 @@ for (const c of CASES) {
   const res = await fetch(`${BASE_URL}/api/chat`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ question: c.q, model: c.model ?? process.env.MODEL }),
+    body: JSON.stringify({ question: c.q, model: c.model ?? process.env.MODEL, previous: c.previous }),
   });
   const body = await res.json();
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
@@ -44,7 +55,7 @@ for (const c of CASES) {
   }
 
   if (problems.length) failures += 1;
-  console.log(`${problems.length ? "❌" : "✅"} ${c.q}${c.model ? ` [${c.model}]` : ""} — ${seconds}초${problems.length ? ` — ${problems.join(" / ")}` : ""}`);
+  console.log(`${problems.length ? "❌" : "✅"} ${c.previous ? `(직전: ${c.previous.question}) ` : ""}${c.q}${c.model ? ` [${c.model}]` : ""} — ${seconds}초${problems.length ? ` — ${problems.join(" / ")}` : ""}`);
   if (res.status === 200) {
     console.log(`   답: ${body.answer.replace(/\n+/g, " ⏎ ").slice(0, 200)}`);
     console.log(`   이유: ${body.panel.reason}`);

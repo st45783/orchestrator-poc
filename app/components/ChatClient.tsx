@@ -1,8 +1,9 @@
 "use client";
 // PLAN 작업 15·17 — 채팅 화면: 질문 입력, 답변 목록, 모델 선택 메뉴, 개인정보 안내, 오류 문구 표시.
+// PLAN 작업 21·22 — 업무별 질문 예시 버튼, 직전 질문·답을 함께 보내 이어 묻기.
 // Design Ref: §1 화면 구성 ①~⑦. 오류일 때는 정해진 문구 하나만 보이고 패널은 그리지 않는다.
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { ChatResponse, DecisionPanel as Panel } from "@/lib/types.ts";
+import type { ChatResponse, ChatTurn, DecisionPanel as Panel } from "@/lib/types.ts";
 import type { ModelOption } from "@/lib/models.ts";
 import { FIXED_ERROR_MESSAGE } from "@/lib/errors.ts";
 import DecisionPanel from "./DecisionPanel.tsx";
@@ -11,11 +12,22 @@ type Message =
   | { id: number; role: "user"; text: string }
   | { id: number; role: "assistant"; text: string; panel?: Panel; isError?: boolean };
 
+/** 업무별 질문 예시 1개씩 (작업 21) */
+const EXAMPLES = [
+  { label: "인사", question: "부서별 인원 수 알려줘" },
+  { label: "재무", question: "이번 달 매출과 영업이익 알려줘" },
+  { label: "영업", question: "계약 금액이 가장 큰 고객사는 어디야?" },
+  { label: "보안", question: "아직 조치 안 된 보안 이벤트 있어?" },
+  { label: "개발", question: "긴급 우선순위 이슈는 몇 개야?" },
+];
+
 export default function ChatClient({ models, defaultModel }: { models: readonly ModelOption[]; defaultModel: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [question, setQuestion] = useState("");
   const [model, setModel] = useState(defaultModel);
   const [loading, setLoading] = useState(false);
+  // 직전에 제대로 답한 질문·답 (오류·되묻기는 문맥으로 쓰지 않는다)
+  const [previous, setPrevious] = useState<ChatTurn | undefined>(undefined);
   const nextId = useRef(1);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -24,9 +36,13 @@ export default function ChatClient({ models, defaultModel }: { models: readonly 
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, loading]);
 
-  async function send(event: FormEvent) {
+  function onSubmit(event: FormEvent) {
     event.preventDefault();
-    const text = question.trim();
+    void send(question);
+  }
+
+  async function send(raw: string) {
+    const text = raw.trim();
     if (!text || loading) return;
 
     setMessages((prev) => [...prev, { id: nextId.current++, role: "user", text }]);
@@ -36,7 +52,7 @@ export default function ChatClient({ models, defaultModel }: { models: readonly 
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: text, model }),
+        body: JSON.stringify({ question: text, model, previous }),
       });
       const body = (await res.json()) as ChatResponse;
       const reply: Message =
@@ -44,6 +60,9 @@ export default function ChatClient({ models, defaultModel }: { models: readonly 
           ? { id: nextId.current++, role: "assistant", text: body.error, isError: true }
           : { id: nextId.current++, role: "assistant", text: body.answer, panel: body.panel };
       setMessages((prev) => [...prev, reply]);
+      if (!("error" in body) && body.panel.outcome === "answered") {
+        setPrevious({ question: text, answer: body.answer });
+      }
     } catch {
       // 네트워크 오류 등 응답을 못 받은 경우에도 정해진 문구 하나만 보여준다
       setMessages((prev) => [...prev, { id: nextId.current++, role: "assistant", text: FIXED_ERROR_MESSAGE, isError: true }]);
@@ -115,7 +134,21 @@ export default function ChatClient({ models, defaultModel }: { models: readonly 
 
       {/* ⑥ 입력창, ⑦ 개인정보 안내 */}
       <footer className="border-t border-zinc-200 dark:border-zinc-800">
-        <form onSubmit={send} className="mx-auto flex max-w-3xl gap-2 px-4 pt-3">
+        <div className="mx-auto flex max-w-3xl gap-2 overflow-x-auto px-4 pt-3" aria-label="질문 예시">
+          {EXAMPLES.map((ex) => (
+            <button
+              key={ex.label}
+              type="button"
+              disabled={loading}
+              onClick={() => void send(ex.question)}
+              title={ex.question}
+              className="shrink-0 rounded-full border border-zinc-300 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-100 disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+            >
+              <span className="font-semibold">{ex.label}</span> · {ex.question}
+            </button>
+          ))}
+        </div>
+        <form onSubmit={onSubmit} className="mx-auto flex max-w-3xl gap-2 px-4 pt-2">
           <input
             value={question}
             onChange={(e) => setQuestion(e.target.value)}

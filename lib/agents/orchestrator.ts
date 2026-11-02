@@ -9,6 +9,7 @@ import {
   TOOLS,
   TOOL_LABELS,
   type ChatSuccessResponse,
+  type ChatTurn,
   type DecisionPanel,
   type Domain,
   type DomainCall,
@@ -102,6 +103,28 @@ const COMPOSE_PROMPT = `너는 사내 업무 정보 서비스의 답변 작성�
 
 const composeSchema = z.object({ answer: z.string() });
 
+// PLAN 작업 22 — 문맥 이어 묻기. 직전 대화가 있을 때만 질문을 혼자 읽어도 뜻이 통하는 문장으로 바꾼다.
+const FOLLOW_UP_PROMPT = `직원이 직전 질문에 이어서 짧게 물을 수 있다 (예: "그럼 영업팀은?", "9월은?").
+직전 질문과 답을 참고해, 이번 질문을 그것만 읽어도 뜻이 통하는 완전한 질문 한 문장으로 바꾼다.
+- 이번 질문이 이미 혼자서 뜻이 통하면 한 글자도 바꾸지 말고 그대로 돌려준다.
+- 이번 질문이 바꾼 부분(부서·기간·대상 등)만 바꾸고, 나머지는 직전 질문을 따른다.
+  예: 직전 "개발팀 인원 알려줘" + 이번 "그럼 영업팀은?" → "영업팀 인원 알려줘"
+- 답을 하거나 내용을 덧붙이지 않는다. 질문만 돌려준다.`;
+
+const followUpSchema = z.object({ question: z.string() });
+
+async function resolveFollowUp(question: string, previous: ChatTurn, model: string, signal?: AbortSignal): Promise<string> {
+  const { question: resolved } = await askStructured({
+    model,
+    name: "follow_up_question",
+    system: FOLLOW_UP_PROMPT,
+    user: `직전 질문: ${previous.question}\n직전 답: ${previous.answer}\n\n이번 질문: ${question}`,
+    schema: followUpSchema,
+    signal,
+  });
+  return resolved.trim() || question;
+}
+
 function shortenReason(reason: string): string {
   const text = reason.trim();
   return text.length <= REASON_MAX ? text : `${text.slice(0, REASON_MAX - 1)}…`;
@@ -133,13 +156,21 @@ function sanitizeCalls(question: string, calls: z.infer<typeof routingSchema>["c
   return result;
 }
 
-export async function orchestrate(question: string, model: string, signal?: AbortSignal): Promise<ChatSuccessResponse> {
+export async function orchestrate(
+  question: string,
+  model: string,
+  signal?: AbortSignal,
+  previous?: ChatTurn,
+): Promise<ChatSuccessResponse> {
+  // 직전 대화가 있으면 이어 묻는 질문을 완전한 질문으로 바꾼다 (작업 22)
+  const fullQuestion = previous ? await resolveFollowUp(question, previous, model, signal) : question;
+
   // ① 질문 분석
   const routing = await askStructured({
     model,
     name: "routing_decision",
     system: ROUTING_PROMPT,
-    user: question,
+    user: fullQuestion,
     schema: routingSchema,
     signal,
   });
@@ -147,6 +178,7 @@ export async function orchestrate(question: string, model: string, signal?: Abor
   if (routing.action === "out_of_range") {
     return { answer: OUT_OF_RANGE_MESSAGE, panel: buildPanel("out_of_range", routing.reason, []) };
   }
+  // 쓰기 허용 검사는 직원이 이번에 실제로 쓴 문장으로 한다
   const calls = routing.action === "route" ? sanitizeCalls(question, routing.calls) : [];
   if (calls.length === 0) {
     const message = routing.clarify_message.trim() || DEFAULT_CLARIFY_MESSAGE;
@@ -167,7 +199,7 @@ export async function orchestrate(question: string, model: string, signal?: Abor
       model,
       name: "final_answer",
       system: COMPOSE_PROMPT,
-      user: `질문: ${question}\n\n업무별 결과(JSON):\n${JSON.stringify(data, null, 2)}`,
+      user: `질문: ${fullQuestion}\n\n업무별 결과(JSON):\n${JSON.stringify(data, null, 2)}`,
       schema: composeSchema,
       signal,
     });
