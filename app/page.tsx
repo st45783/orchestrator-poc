@@ -4,6 +4,10 @@ export default function Home() {
   return (
     <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
       <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
+        {/* 앱 이름: PRD의 서비스 이름을 첫 화면 맨 위에 크게 표시 */}
+        <h1 className="text-5xl font-bold tracking-tight text-black dark:text-zinc-50">
+          오케스트레이터 서비스
+        </h1>
         <Image
           className="dark:invert h-5 w-[100px]"
           src="/next.svg"
