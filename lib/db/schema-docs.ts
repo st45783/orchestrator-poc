@@ -2,7 +2,7 @@
 // Design Ref: §3 — 설명서에 적힌 테이블·컬럼만 쓴다 (PRD must ② 규칙 1). 영업·보안·개발에는 staff 뷰를 포함한다.
 // 테이블·허용 값은 supabase/migrations/0001_domain_schemas.sql 과 같아야 한다. 바꾸면 둘 다 고친다.
 // Vercel 배포 시 파일이 함께 묶이도록 .md 대신 코드 모듈로 둔다.
-import type { Domain } from "../types";
+import type { Domain } from "../types.ts";
 
 const COMMON = `
 공통 규칙:

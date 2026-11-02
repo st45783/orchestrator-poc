@@ -1,6 +1,6 @@
 // PLAN 작업 7 — 업무별 가짜 API 5개. 실제로 아무 작업도 하지 않고 정해진 "(가상)" 문구만 돌려준다.
 // Design Ref: §4.2 — 문구는 서버가 답 뒤에 원문 그대로 붙인다 (§2 핵심 원칙).
-import type { Domain, PanelToolRecord } from "./types";
+import type { Domain, PanelToolRecord } from "./types.ts";
 
 export const MOCK_APIS: Record<Domain, { action: string; message: string }> = {
   hr: { action: "휴가 신청", message: "휴가 신청이 접수되었습니다(가상)" },

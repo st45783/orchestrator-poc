@@ -12,7 +12,8 @@
     "db:check-schema": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env scripts/check-schema.mjs",
     "db:seed:generate": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON supabase/seed/generate.ts",
     "db:check-seed": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env scripts/check-seed.mjs",
-    "ai:check": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env scripts/check-openai.mjs"
+    "ai:check": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env scripts/check-openai.mjs",
+    "db:check-query": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env scripts/check-query.mjs"
   },
   "dependencies": {
     "next": "16.4.3",
