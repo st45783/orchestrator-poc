@@ -14,7 +14,8 @@
     "db:check-seed": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env scripts/check-seed.mjs",
     "ai:check": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env scripts/check-openai.mjs",
     "db:check-query": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file=.env scripts/check-query.mjs",
-    "chat:check": "node scripts/check-chat.mjs"
+    "chat:check": "node scripts/check-chat.mjs",
+    "eval": "node scripts/run-eval.mjs"
   },
   "dependencies": {
     "next": "16.4.3",

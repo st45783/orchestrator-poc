@@ -1,5 +1,6 @@
 // PLAN 작업 12~14 확인 — /api/chat 에 대표 질문을 보내 라우팅·되묻기·기간 밖·오류 처리를 본다.
 // 실행: npm run dev 를 켠 상태에서 npm run chat:check
+//       다른 모델: $env:MODEL="gpt-4.1"; npm run chat:check
 //       배포 주소를 시험하려면 BASE_URL 환경변수를 준다 (PowerShell: $env:BASE_URL="https://..."; npm run chat:check)
 // 쓰기 질문은 넣지 않는다 (데이터를 바꾸므로 작업 19 채점에서 따로 다룬다).
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
@@ -20,7 +21,7 @@ for (const c of CASES) {
   const res = await fetch(`${BASE_URL}/api/chat`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ question: c.q, ...(c.model ? { model: c.model } : {}) }),
+    body: JSON.stringify({ question: c.q, model: c.model ?? process.env.MODEL }),
   });
   const body = await res.json();
   const seconds = ((Date.now() - started) / 1000).toFixed(1);

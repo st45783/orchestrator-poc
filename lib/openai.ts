@@ -15,7 +15,10 @@ function getOpenAI(): OpenAI {
   return client;
 }
 
-/** 추론형 모델(gpt-5·o 계열)은 temperature를 지원하지 않는다 */
+/**
+ * 추론형 모델(gpt-5·o 계열)은 temperature를 지원하지 않는다.
+ * 대신 추론 강도를 낮춰, 호출이 3번 이상 이어져도 50초 마감 안에 끝나게 한다.
+ */
 function isReasoningModel(model: string): boolean {
   return /^(gpt-5|o\d)/.test(model);
 }
@@ -42,7 +45,7 @@ export async function askStructured<T extends z.ZodType>(req: StructuredRequest<
         { role: "user", content: req.user },
       ],
       response_format: zodResponseFormat(req.schema, req.name),
-      ...(isReasoningModel(req.model) ? {} : { temperature: 0 }),
+      ...(isReasoningModel(req.model) ? { reasoning_effort: "low" as const } : { temperature: 0 }),
     },
     { signal: req.signal },
   );
